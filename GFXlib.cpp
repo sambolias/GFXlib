@@ -98,7 +98,117 @@ public:
 
 	class texture	//this will load textures that can be drawn to display
 	{				//should this hold shader program or display?
+		
+		//shader program functions
+		GLuint compileShader(GLenum shaderType, const string source)
+		{
+			GLuint shader = glCreateShader(shaderType);
 
+			const char * sourceArray[1] = { source.c_str() };	//needs to match const GLchar *
+			glShaderSource(shader, 1, sourceArray, NULL);		
+			glCompileShader(shader);
+
+			GLint compileResults;
+			glGetShaderiv(shader, GL_COMPILE_STATUS, &compileResults);
+
+			if (compileResults == 0)
+			{
+				//this means there was an error
+				//need to do something here
+				//see other project for how to log
+			}
+
+		}
+		
+		
+		GLuint compileShaderProgram(const string &vsSource, const string &fsSource)
+		{
+			GLuint program = glCreateProgram();
+
+			if (program == 0) 
+			{
+				//should probably throw program creation failed error
+			}
+
+			GLuint vs = compileShader(GL_VERTEX_SHADER, vsSource);
+			GLuint fs = compileShader(GL_FRAGMENT_SHADER, fsSource);
+
+			if (vs == 0 || fs == 0)	//if either failed to compile
+			{	//clean up mess
+				glDeleteShader(vs);
+				glDeleteShader(fs);
+				glDeleteProgram(program);
+				//maybe throw, but return for now
+				return 0;
+			}
+
+			glAttachShader(program, vs);
+			glDeleteShader(vs);	//no longer needed
+
+			glAttachShader(program, fs);
+			glDeleteShader(fs);	//same, RAII
+
+			glLinkProgram(program);
+
+			GLint linkStatus;
+			glGetProgramiv(program, GL_LINK_STATUS, &linkStatus);	//check similar to shaders
+
+			if (linkStatus == 0)
+			{
+				//needs to throw or return 0
+				//so that nobody trys to use bad program
+				//I need to make overall exception strategy first
+			}
+
+			return program;
+
+		}
+
+
+
+		//vertex shader for loaded texture
+		const string vs = R"(
+			attribute vec4 aPos;
+			attribute vec2 aCoord;
+			varying vec2 vCoord;
+
+			void main()
+			{	
+				gl_Position = aPos;
+				vCoord = aCoord;
+			}
+		)";
+
+		//fragment shader for loaded texture
+		const string fs = R"(
+			precision mediump float;
+			varying vec2 vCoord;
+			uniform sampler2D sTex;
+
+			void main()
+			{
+				gl_FragColor = texture2D(sTex, vCoord);	
+			}	
+		)";
+		//need to do a lot of refactoring, put stuff in header once this works
+		GLuint _program;
+		GLuint _positionAttribute;
+		GLuint _colorAttribute;
+		GLuint _modelUniform;
+		GLuint _viewUniform;
+		GLuint _projUniform;
+		int texWidth, texHeight;
+		//heres where the magic happens
+	public:
+		texture(const string &file)
+		{
+			_program = compileShaderProgram(vs, fs);
+			_positionAttribute = glGetAttribLocation(_program, "aPosition");
+			_colorAttribute = glGetAttribLocation(_program, "aColor");
+			_modelUniform = glGetUniformLocation(_program, "uModelMatrix");
+			_viewUniform = glGetUniformLocation(_program, "uViewMatrix");
+			_projUniform = glGetUniformLocation(_program, "uProjMatrix");
+		}
 
 	};
 };

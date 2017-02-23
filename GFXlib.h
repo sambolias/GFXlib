@@ -16,9 +16,13 @@ using std::string;
 #include <functional>
 using std::function;
 
-//OpenGL includes
+//OpenGL includes - see docs for licensing
 #include <GL\glew.h>
 #include <GL\freeglut.h>
+
+//for loading textures - see docs for licensing
+#define STB_IMAGE_IMPLEMENTATION 
+#include "stb_image.h"
 
 
 
