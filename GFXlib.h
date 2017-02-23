@@ -1,7 +1,7 @@
-// stdafx.h : include file for standard system include files,
-// or project specific include files that are used frequently, but
-// are changed infrequently
-//
+//GFXlib.h
+//Sam Erie
+//2/22/17
+//includes for my graphics library
 
 #pragma once
 
@@ -25,5 +25,3 @@ using std::function;
 #include "stb_image.h"
 
 
-
-// TODO: reference additional headers your program requires here
