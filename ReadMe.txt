@@ -10,10 +10,13 @@ It currently runs using FreeGLUT and GLEW which
 can be found at freeglut.sourceforge.net and 
 glew.sourceforge.net respectively.
 
+Also uses stb_image to load images
+which can be found at https://github.com/nothings/stb
+
 
 Goals and Timeframes to go here.
 
 
-Update Licensing information.
+Update Licensing/copyright information.
 
 Start tutorial etc.
