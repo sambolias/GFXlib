@@ -175,6 +175,19 @@ public:
 	bool isLoaded = false;	//this is messy, shouldn't be public
 	texture() {}
 
+	//scalar resize, should also have scalarx and scalary transforms, but with better names
+	void resize(int width)
+	{
+		float scale = (float)width / (float)texWidth;
+		texWidth *= scale;
+		texHeight *= scale;
+	}
+	//rotate and other transform functions
+
+	//proabably make textures possess their own coordinates
+	//and layer info
+	//then maybe animated sprites
+
 	void load(const string &file)
 	{
 		//set up shaders
@@ -218,10 +231,16 @@ public:
 		glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);
 		/////////////////////////////////////////////////////
 
+		glPushMatrix();
+		//if tex class is nested in display
+		//then this could default to quarter screen size minus half image size (center origin)
+		//not sure why it needs quartered
+		glViewport((int)(3000.f/4.f - texWidth/2.f), (int)(2000.f/4.f - texHeight/2.f), texWidth, texHeight);
+
 		//this is the actual draw
 		glDrawElements(GL_TRIANGLES, 6, GL_UNSIGNED_SHORT, Indices);
 
-
+		glPopMatrix();
 	}
 
 private:
@@ -258,7 +277,12 @@ texture test;
 
 void drawTest()
 {
-	if(!test.isLoaded) test.load("test.jpg");
+	//init tex for test
+	if (!test.isLoaded)
+	{
+		test.load("test.jpg");
+		test.resize(800);
+	}
 
 	glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
 	glMatrixMode(GL_MODELVIEW);
@@ -287,7 +311,7 @@ public:
 		
 	}
 
-	int winHeight = 3000, winWidth = 2000;	//need to find out how to init these for diff machines
+	int winHeight = 2000, winWidth = 3000;	//need to find out how to init these for diff machines
 	int refresh = 20;	//need to make sure this does what i think it does
 	string title;
 
