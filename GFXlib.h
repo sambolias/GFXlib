@@ -5,23 +5,16 @@
 
 #pragma once
 
-//saving for xplatform uses
-#include "targetver.h"
+//my includes
+#include "GFXdisplay.h"
 
-//std lib includes
-#include <stdio.h>
-#include <iostream>
-#include <string>
-using std::string;
-#include <functional>
-using std::function;
+class GFX
+{
+public:
+	
+	GFX() { test = new display("test"); }
+	display *test;
 
-//OpenGL includes - see docs for licensing
-#include <GL\glew.h>
-#include <GL\freeglut.h>
-
-//for loading textures - see docs for licensing
-#define STB_IMAGE_IMPLEMENTATION 
-#include "stb_image.h"
+};
 
 

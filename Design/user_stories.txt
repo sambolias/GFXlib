@@ -1,0 +1,25 @@
+-Get together all previously done work
+
+-Refactor into classes- follow RAII and Agile principles
+
+
+User stories
+
+-I want to be able to create a display
+	-I want display to know what size monitor it is on (possibly other hardware knowledge needed)
+	-I want to be able to change the size and title of my display
+	-I want to be able to make display fullscreen
+
+-I want my display to have keyboard input
+
+-I want my display to be able to load images
+	-I want to be able to transform images
+		-I want to be able to translate image on screen
+		-I want to be to be able to zoom or translate image (texture) itself
+			-I want specific background images
+			-I want sprites and interactive images
+				-Images must have layer
+		-I want to be able to rotate image
+		-I want to be able to resize image
+		-I want all image functions to preserve designated image size and aspect ratio
+			-I want to be able to deform image
