@@ -36,7 +36,9 @@ using std::unordered_map;
 
 //glm opengl math lib -see docs for licensing
 #include <glm.hpp>
+#include <gtc/matrix_transform.hpp>
 using glm::vec2;
+
 
 
 class shader
@@ -54,9 +56,21 @@ class shader
 			attribute vec2 aCoord;
 			varying vec2 vCoord;
 
+			uniform mat4 MVP;
+			uniform mat4 P;
+			uniform float SW;
+			uniform float TW;
+
+			vec4 eye;
+			vec4 proj;
+			
 			void main()
 			{	
-				gl_Position = aPos;
+				eye = MVP * vec4(aPos.x,aPos.y, 0.5, 1);
+				proj = P * vec4(0.5*TW, 0.5*TW, eye.z, eye.w);
+
+				gl_PointSize = SW* proj.x / proj.w;
+				gl_Position = P * eye;
 				vCoord = aCoord;
 			}
 		)";
@@ -73,10 +87,17 @@ class shader
 			}	
 		)";
 
-
+public://for testing
 	GLuint _program;
 	GLuint _samplerLocation;
 	GLuint _textureCoord;	//location or coordinates?
+
+							
+	GLuint _projectID;
+	GLuint _modelID;
+	GLuint _screenWidth;
+	GLuint _texWidth;
+	
 
 	GLuint _positionAttribute;
 	GLuint _colorAttribute;
@@ -87,7 +108,10 @@ public:
 	//needs dctor
 	shader();
 	
-
+	GLuint & getProjectID();
+	GLuint & getModelID();
+	GLuint & getScreenWidthID();
+	GLuint & getTexWidthID();
 	void initShader();
 	
 	void useShader(const GLfloat *Vertices);
@@ -112,9 +136,20 @@ class texture	//this will load textures that can be drawn to display
 	GLuint _texture;
 	int texWidth, texHeight;
 	float zoom = 1.f;
+	float scaleX=1.f, scaleY=1.f;
 	float rotation = 0.f;
 	vec2 externalPosition, internalPosition;
 	unsigned char * image;
+
+	//this is just learning, probably should be in display
+	//only model view belongs in texture class
+	//but all 3 are needed to update mvp for shader
+	//glm::mat4 Perspective;
+	//glm::mat4 View;
+	glm::mat4 Model = glm::mat4(1.0f);
+
+	glm::mat4 mvp;
+//	GLint mvp_handle;
 	//heres where the magic happens
 
 	GLfloat Vertices[20] =
@@ -165,22 +200,36 @@ public:
 	//then maybe animated sprites
 
 	void load(const string &file);
-	
+
 	//kindof confusing names, this loads it to draw, the other loads it from file
 	void loadTexture();
 	void drawTexture();
-private:
 
+private:
 
 	//loads file using stbi_image free lib...needs error checking
 	void loadImage(const string &file);
 	
+	void transformMatrices();
+
 };
 
 ///////////////////////////////
 
 
+class camera
+{
+public:
 
+	camera() {}
+
+	glm::mat4 Projection;
+	glm::mat4 View;
+	glm::mat4 Model;
+
+	//if this works out make accessor functions
+
+};
 
 //defaults for glutLoop
 //take member functions in display class
@@ -197,7 +246,7 @@ class display	//this will create display and start glut loop
 public:
 	//need dctor stuff and error handling
 //	display() {}
-	display(string t="");
+	display();
 
 	
 	int winHeight = 512, winWidth = 512;	//need to find out how to init these for diff machines
@@ -205,6 +254,7 @@ public:
 	string title;
 	unordered_map<unsigned char, bool> keyListeners;
 	vec2 mousePos;
+	camera cam;
 
 	vector<unique_ptr<shader>> shaderList;
 	//consider using a map with named textures
@@ -245,6 +295,7 @@ public:
 
 
 }thisDisplay;
+
 
 
 #endif // !SINGLE_FILE_H_INCLUDED

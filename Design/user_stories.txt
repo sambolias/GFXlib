@@ -23,3 +23,12 @@ User stories
 		-I want to be able to resize image
 		-I want all image functions to preserve designated image size and aspect ratio
 			-I want to be able to deform image
+
+-I want to be able to make my own textures from pixel array
+
+-I want sound
+
+-I want text output
+	-maybe input
+
+-I want networking

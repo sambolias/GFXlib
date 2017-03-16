@@ -81,6 +81,26 @@ shader::shader()
 {
 }
 
+GLuint & shader::getProjectID()
+{
+	return _projectID;
+}
+
+GLuint & shader::getModelID()
+{
+	return _modelID;
+}
+
+GLuint & shader::getScreenWidthID()
+{
+	return _screenWidth;
+}
+
+GLuint & shader::getTexWidthID()
+{
+	return _texWidth;
+}
+
 void shader::initShader()
 {
 	_program = compileShaderProgram(vs, fs);
@@ -88,6 +108,10 @@ void shader::initShader()
 	_textureCoord = glGetAttribLocation(_program, "aCoord");
 	_samplerLocation = glGetUniformLocation(_program, "uTex");	//these names need fixed, not descriptive
 	_colorAttribute = glGetAttribLocation(_program, "aColor");
+	_modelID = glGetUniformLocation(_program, "MVP");
+	_projectID = glGetUniformLocation(_program, "P");
+	_screenWidth = glGetUniformLocation(_program, "SW");
+	_texWidth = glGetUniformLocation(_program, "TW");
 }
 
 void shader::useShader(const GLfloat * Vertices)
@@ -111,9 +135,11 @@ bool texture::isGood()
 	return isLoaded;
 }
 
+
 //all texture needs from display is size, but externalPosition does need updated...global statics or accessors?
-texture::texture() : externalPosition(vec2(512.f / 2.f, 512.f / 2.f)), internalPosition(vec2(5.f, 5.f))
+texture::texture() : externalPosition(vec2((float)thisDisplay.getWidth()/2.f, (float)thisDisplay.getWidth()/2.f)), internalPosition(vec2(5.f, 5.f))
 {
+	
 }
 
 texture::texture(const texture & cpy) 
@@ -125,6 +151,8 @@ texture::texture(const texture & cpy)
 	texWidth = cpy.texWidth;
 	texHeight = cpy.texHeight;
 	zoom = cpy.zoom;
+	scaleX = cpy.scaleX;
+	scaleY = cpy.scaleY;
 	rotation = cpy.rotation;
 	externalPosition = cpy.externalPosition;
 	internalPosition = cpy.internalPosition;
@@ -137,10 +165,13 @@ texture::texture(const texture & cpy)
 
 void texture::resize(int width)
 {
+
 	float scale = (float)width / (float)texWidth;
-	texWidth *= scale;
-	texHeight *= scale;
-	updateVertices();
+	
+	//needs to be a scalex scaley
+	scaleX = scale;
+	scaleY = scale;
+
 }
 
 void texture::translateTexture(vec2 pos)
@@ -148,28 +179,46 @@ void texture::translateTexture(vec2 pos)
 	externalPosition = pos;
 }
 
+
+
 void texture::updateVertices()
 {
 	//this function translates vertices
 	//texture matrix, needs better comments
 
+	//this is not aspect ratio...not sure if this is right
+	//need to figure it out and rename variables
+	//I think the trick may be normalize
+	float aspectY = (float)texHeight; // (float)texWidth;
+	float aspectX = (float)texWidth; // (float)texWidth;
+
+	vec2 vtxNormals = glm::normalize(vec2(aspectX, aspectY));
+
 	GLfloat x = (internalPosition.x - 5.f);
 	GLfloat y = (internalPosition.y - 5.f);
-
-	//fun trig - better variable names and some extra space
-	//could probably elim need for tons of comments here
-	//needs to keep aspect ratio on rotate
+	
+//	vec2 aspect( zoom * aspectX, zoom * aspectY);
+	vec2 aspect( vtxNormals.x, vtxNormals.y);
+	
+	
 	GLfloat V[20] =
 	{
-		(zoom*glm::sin(glm::radians(rotation + 315 - 90))) + x,(zoom*glm::cos(glm::radians(rotation + 315 - 90))) + y, 0.f,
-		0.f, 1.f,
-		(zoom*glm::sin(glm::radians(rotation + 45 - 90))) + x, (zoom*glm::cos(glm::radians(rotation + 45 - 90))) + y, 0.f,
-		0.f, 0.f,
-		(zoom*glm::sin(glm::radians(rotation + 135 - 90))) + x, (zoom*glm::cos(glm::radians(rotation + 135 - 90))) + y, 0.f,
-		1.f, 0.0f,
-		(zoom*glm::sin(glm::radians(rotation + 225 - 90))) + x, (zoom*glm::cos(glm::radians(rotation + 225 - 90))) + y, 0.f,
-		1.f, 1.f
+		-aspect.x,
+		aspect.y, 0.f,
+		0.f+x, zoom*1.f+y,
+		-aspect.x,
+		-aspect.y, 0.f,
+		0.f+x, 0.f+y,
+		aspect.x,
+		-aspect.y, 0.f,
+		zoom*1.f+x, 0.f+y,
+		aspect.x,
+		aspect.y, 0.f,
+		zoom*1.f+x, zoom*1.f+y
+
+
 	};
+	
 
 	//post newly generated vtx
 	for (int i = 0; i < 20; i++)
@@ -181,27 +230,35 @@ void texture::updateVertices()
 
 void texture::traverseTexture(vec2 pos)
 {
+	//is there any reason to limit this? 
+	//eventually something would overflow
 	internalPosition = pos;
 	updateVertices();
 }
 
 void texture::zoomTexture(float scalar)
 {
-	zoom = scalar;
-	updateVertices();
+
+	//zooms in only
+	if (scalar <= 1 && scalar > 0 )
+	{
+		zoom = scalar;
+		updateVertices();
+	}
 }
 
 void texture::rotateTexture(float rot)
 {
+	rot -= rotation;
 	do
 	{
 		
-		if (rot > 360)rot -= 360;
-		if (rot < 0)rot += 360;
+		if (rot > 360.f)rot -= 360.f;
+		if (rot < 0.f)rot += 360.f;
 
 		rotation = rot;
 
-	} while (!(rot < 360 && rot > 0));
+	} while (!(rot < 360.f && rot > 0.f));
 	updateVertices();
 }
 
@@ -252,6 +309,8 @@ void texture::load(const string & file)
 
 void texture::loadTexture()
 {
+
+
 	glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR);
 	glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
 	glTexImage2D(GL_TEXTURE_2D, 0, GL_RGBA, texWidth, texHeight, 0, GL_RGBA, GL_UNSIGNED_BYTE, image);
@@ -269,16 +328,21 @@ void texture::drawTexture()
 	glEnable(GL_BLEND);
 	glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);
 	/////////////////////////////////////////////////////
-
+	
 	glPushMatrix();
 
-	//draws image to stored external Position, center of image at externalPosition point
-	glViewport((int)((float)externalPosition.x - texWidth / 2.f), (int)((float)externalPosition.y - texHeight / 2.f), texWidth, texHeight);
+	glEnable(GL_DEPTH_TEST);
+
+	//handles scale rotate and translate
+	transformMatrices();
+	
 
 	//this is the actual draw
 	glDrawElements(GL_TRIANGLES, 6, GL_UNSIGNED_SHORT, Indices);
 
 	glPopMatrix();
+
+
 }
 
 void texture::loadImage(const string & file)
@@ -287,7 +351,7 @@ void texture::loadImage(const string & file)
 
 	unsigned char * img;
 
-	//stbi_set_flip_vertically_on_load(true);
+	stbi_set_flip_vertically_on_load(true);
 	img = stbi_load(file.c_str(), &width, &height, &channels, STBI_rgb_alpha);
 
 	//save to member variables
@@ -297,12 +361,46 @@ void texture::loadImage(const string & file)
 
 }
 
+void texture::transformMatrices()
+{
+	glm::mat4 transModel;
+	glm::mat4 transView;
+
+	Model = glm::rotate(Model, glm::radians((float)rotation), glm::vec3(0.f, 0.f, -1.f));
+	transModel = glm::scale(Model, glm::vec3(scaleX, scaleY, 0));
+
+
+	//need to calculate and subtract dist from center
+	//variables need to be used to make this all more clear
+	float rx = -externalPosition.x + thisDisplay.getWidth() / 2.f;
+	float ry = -externalPosition.y + thisDisplay.getHeight() / 2.f;
+	//this isn't quite right, but on the right path i think
+	rx *= -.15f;
+	ry *= -.15f;
+
+	transView = glm::translate(thisDisplay.cam.View, glm::vec3((externalPosition.x - rx) / (thisDisplay.getWidth()) - .5f, (externalPosition.y - ry) / (thisDisplay.getHeight()) - .5f, -.5f));
+
+	mvp = transView*transModel;
+
+	//set up shader model * view matrix
+	glUniform1f((thisDisplay.shaderList[usingShaderNumber]->getTexWidthID()), texWidth);
+	glUniformMatrix4fv((thisDisplay.shaderList[usingShaderNumber]->getModelID()), 1, GL_FALSE, &mvp[0][0]);
+
+}
+
 
 ///////////////////////////////////////
 
 
-display::display(string t) : title(t)
-{}
+display::display()
+{
+
+	title = "default";					//field of view 			aspect ratio			near  far
+	cam.Projection = glm::perspective(glm::radians(45.f), (float)winWidth/(float)winHeight, 0.1f, 10.f);
+								       //eye			  center 			    up
+	cam.View = glm::lookAt(glm::vec3(0, 0, .5), glm::vec3(0, 0, 0), glm::vec3(0, 1, 0));
+
+}
 
 void defaultTimer(int r)
 {
@@ -328,16 +426,22 @@ void display::memberDraw()
 {
 
 	glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
-	glMatrixMode(GL_MODELVIEW);
-	glLoadIdentity();
+	
+	
 
 //	for(auto tex : textureList ) how to this way?
 	//loop draws all textures 
 	for (unsigned int i = 0; i < textureList.size(); i++)
 	{
+		
+		//set up cam matrix for shader
+		glUniform1f((shaderList[textureList[i]->usesShader()]->getScreenWidthID()), winWidth);
+		glUniformMatrix4fv((shaderList[textureList[i]->usesShader()]->getProjectID()), 1, GL_FALSE, &(cam.Projection[0][0]));
+
 		textureList[i]->loadTexture();
 		shaderList[textureList[i]->usesShader()]->useShader(textureList[i]->getVtx());
 		textureList[i]->drawTexture();
+	
 	}
 
 	
@@ -395,7 +499,7 @@ void display::openDisplay(int * ac, char ** av)
 {
 	//init glut, error handling?
 	glutInit(ac, av);	//at_EXIT_HACK for windows? research
-	glutInitDisplayMode(GLUT_RGBA | GLUT_DOUBLE);	//is there any reason to change these
+	glutInitDisplayMode(GLUT_RGBA | GLUT_DEPTH);	//is there any reason to change these
 	glutInitWindowSize(winWidth, winHeight);
 
 	glutCreateWindow(title.c_str());
@@ -409,29 +513,17 @@ void display::openDisplay(int * ac, char ** av)
 	}
 
 
+	//init glutloop functions
 	glutDisplayFunc(draw);
 	glutKeyboardFunc(keyboard);
 	glutPassiveMotionFunc(mouse);
 	glutTimerFunc(refresh, timerEvent, 0);
 
-	//how much harder would it to be to access OpenGL without freeglut and glew?
-	//if I'm piggybacking on these libraries I have to accept all glutxxxxFunc binds
-
-
-	//some of these calls are not necessary for 2d
-	//need to research
 
 	//R   G    B    A
 	glClearColor(0.f, 0.f, 0.f, 0.f);	//this needs to take variables
-										//	glViewport(0, 0, winWidth, winHeight);	//this needs more customizable, maybe...prob not for 2d
 
-	glMatrixMode(GL_PROJECTION);	//again prob good for 2d
-	glLoadIdentity();
-
-	//field of view  - aspect ratio  - near distance- far distance
-	//	gluPerspective(60.f, (GLfloat)winWidth / winHeight, 0.f, 30.f);
-
-	//this was in ctor
+	//create default texture shader
 	shaderList.push_back(make_unique<shader>());
 	shaderList[0]->initShader();
 
@@ -504,26 +596,31 @@ int main(int argc, char **argv)
 
 	//create texture
 	texture tex;
-	tex.load("test.jpg");
-
+	//tex.load("kim.jpg");
+	tex.load("test2.bmp");
+	tex.resize(800);
 	//test multiple textures
 	texture tex2;
 	tex2.load("test.jpg");
-
-
+	//tex2.load("test2.bmp");
+	tex2.resize(200);
+	
 	//test display init functions
 	thisDisplay.addTexture(std::make_shared<texture>(tex));	//this should make pointer in function
 	thisDisplay.addTexture(std::make_shared<texture>(tex2));	//need to come up with layering method
 	thisDisplay.setSize(vec2(1000, 1000));
 	
-	thisDisplay.addKeyListener('w');
-	thisDisplay.addKeyListener('s');
+	//find out why these don't need to be added...more convenient if they don't
+//	thisDisplay.addKeyListener('w');
+//	thisDisplay.addKeyListener('s');
 
 	auto t1 = thisDisplay.textureList[0];
 	auto t2 = thisDisplay.textureList[1];
 	
 	float rot = t1->getRotation();
+
 	//test update function
+	//and other features
 	thisDisplay.setUpdate([&]() {
 	
 		t1 = thisDisplay.textureList[0];
@@ -533,22 +630,47 @@ int main(int argc, char **argv)
 		//test texture manipulation in update loop
 		t1->rotateTexture(rot + .1f);
 	
+		
 		//test random movement
 		//t1->translateTexture(vec2(t1->getExternalPosition().x+ (((int)glm::radians(rot) % 3)?1:-1)*(.25f*cos(glm::radians(rot))), t1->getExternalPosition().y+ (((int)glm::radians(rot) % 3)?-1:1)*(.25f*cos(glm::radians(rot)))));
 
 		//test keyboard movement
+		//test texture translations/traversals
 		if(thisDisplay.checkKeyListener('w'))
 		{
-			t2->translateTexture(vec2(t2->getExternalPosition().x, t2->getExternalPosition().y+10));
+			t2->traverseTexture(vec2(t2->getInternalPosition().x, t2->getInternalPosition().y+.1));
+		//	t2->translateTexture(vec2(t2->getExternalPosition().x, t2->getExternalPosition().y+1));
 		}
 		if (thisDisplay.checkKeyListener('s'))
 		{
-			t2->translateTexture(vec2(t2->getExternalPosition().x, t2->getExternalPosition().y - 10));
+			t2->traverseTexture(vec2(t2->getInternalPosition().x, t2->getInternalPosition().y - .1));
+		//	t2->translateTexture(vec2(t2->getExternalPosition().x, t2->getExternalPosition().y - 1));
+		}
+		if (thisDisplay.checkKeyListener('d'))
+		{
+			t2->traverseTexture(vec2(t2->getInternalPosition().x+.1, t2->getInternalPosition().y));
+			//	t2->translateTexture(vec2(t2->getExternalPosition().x +1, t2->getExternalPosition().y));
+		}
+		if (thisDisplay.checkKeyListener('a'))
+		{
+			t2->traverseTexture(vec2(t2->getInternalPosition().x-.1, t2->getInternalPosition().y ));
+			//	t2->translateTexture(vec2(t2->getExternalPosition().x-1, t2->getExternalPosition().y ));
+		}
+		//test zoom
+		if (thisDisplay.checkKeyListener('1'))
+		{
+			t2->zoomTexture(t2->getZoom() + .1);
+		}
+		if (thisDisplay.checkKeyListener('2'))
+		{
+			t2->zoomTexture(t2->getZoom() - .1);
 		}
 		
 		//test mouse movement
-		//keyboard input messes this up, not sure why yet
-		t1->translateTexture(thisDisplay.getMousePos());
+		//keyboard input messes this up, not sure why yet		--TODO--
+		vec2 m = thisDisplay.getMousePos();
+	//	std::cout << m.x << " " << m.y << "\n";
+		t1->translateTexture(m);
 
 
 	});
