@@ -71,6 +71,8 @@ GLuint shader::compileShaderProgram(const string & vsSource, const string & fsSo
 		//needs to throw or return 0
 		//so that nobody trys to use bad program
 		//I need to make overall exception strategy first
+		glDeleteProgram(program);
+		return 0;
 	}
 
 	return program;
@@ -79,6 +81,11 @@ GLuint shader::compileShaderProgram(const string & vsSource, const string & fsSo
 
 shader::shader()
 {
+}
+
+shader::~shader()
+{
+	glDeleteProgram(_program);
 }
 
 GLuint & shader::getProjectID()
@@ -108,7 +115,7 @@ void shader::initShader()
 	_textureCoord = glGetAttribLocation(_program, "aCoord");
 	_samplerLocation = glGetUniformLocation(_program, "uTex");	//these names need fixed, not descriptive
 	_colorAttribute = glGetAttribLocation(_program, "aColor");
-	_modelID = glGetUniformLocation(_program, "MVP");
+	_modelID = glGetUniformLocation(_program, "MV");
 	_projectID = glGetUniformLocation(_program, "P");
 	_screenWidth = glGetUniformLocation(_program, "SW");
 	_texWidth = glGetUniformLocation(_program, "TW");
@@ -139,14 +146,53 @@ bool texture::isGood()
 //all texture needs from display is size, but externalPosition does need updated...global statics or accessors?
 texture::texture() : externalPosition(vec2((float)thisDisplay.getWidth()/2.f, (float)thisDisplay.getWidth()/2.f)), internalPosition(vec2(5.f, 5.f))
 {
-	
+	usingShaderNumber = 0;
+	zoom = 1.f;
+	scaleX = 1.f;
+	scaleY = 1.f;
+	rotation = 0.f;
+
+	Model = glm::mat4(1.0f);
+
+	GLfloat V[] =
+	{
+		-1.f, 1.f, 0.0f,	//screen (x,y,z)
+		0.0f, 1.f,			//texture (u,v)
+		-1.f, -1.f, 0.0f,
+		0.0f, 0.0f,
+		1.f, -1.f, 0.0f,
+		1.f, 0.0f,
+		1.f, 1.f, 0.0f,
+		1.f, 1.f
+	};
+
+	//copy contents
+	for (int i = 0; i < 20; i++)
+	{
+		Vertices[i] = V[i];
+	}
+	GLshort I[] = { 0, 1, 2 ,0, 2, 3 };
+	//copy contents
+	for (int i = 0; i < 6; i++)
+	{
+		Indices[i] = I[i];
+	}
+
+	isLoaded = false;
 }
 
-texture::texture(const texture & cpy) 
+
+
+textBox::textBox(const textBox & cpy)
 {
+
+	text = cpy.text;
+	bg_color = cpy.bg_color;
+	text_color = cpy.text_color;
+
 	isLoaded = cpy.isLoaded;
 	usingShaderNumber = cpy.usingShaderNumber;
-	_texture=cpy._texture;
+	_texture = cpy._texture;
 	image = cpy.image;
 	texWidth = cpy.texWidth;
 	texHeight = cpy.texHeight;
@@ -161,17 +207,27 @@ texture::texture(const texture & cpy)
 
 }
 
+texture::~texture()
+{
+	glDeleteTextures(1, &_texture);
+	if (image != nullptr)
+	{
+		delete[] image;
+	}
+}
+
 
 
 void texture::resize(int width)
 {
+	if (texWidth > 0)	//temp fix for resize textBox bug --think i need to store scale and do this later
+	{
+		float scale = (float)width / (float)texWidth;
 
-	float scale = (float)width / (float)texWidth;
-	
-	//needs to be a scalex scaley
-	scaleX = scale;
-	scaleY = scale;
-
+		//needs to be a scalex scaley
+		scaleX = scale;
+		scaleY = scale;
+	}
 }
 
 void texture::translateTexture(vec2 pos)
@@ -294,44 +350,159 @@ int texture::usesShader()
 
 void texture::load(const string & file)
 {
-	//this needs error checking
-
+	
+	//deletes if there is image loaded
+	if (image != nullptr)
+	{
+		delete[] image;
+		glDeleteTextures(1, &_texture);
+	}
 	//load the texture from file
+
+	//this needs error checking
 
 	//opengl part
 	glGenTextures(1, &_texture);
 	glBindTexture(GL_TEXTURE_2D, _texture);
 	//stb_image.h part
 	loadImage(file);
+	
+	isLoaded = true;
+}
+
+bool tolerance(float a, float b, int t)
+{
+	if(a>b)
+	{
+		if (a - t < b)return true;
+	}
+	else if (a + t > b) return true;
+
+	return false;
+}
+
+void texture::load(vec2 &size, glm::vec4 &rgba)
+{
+
+
+	texWidth = size.x;
+	texHeight = size.y;
+
+	//deletes if there is image loaded
+	if (image != nullptr)
+	{
+		delete[] image;
+		glDeleteTextures(1, &_texture);
+	}
+
+	//allocates image pointer
+	image = new unsigned char[ 4 * size.x * size.y ];
+	
+	glGenTextures(1, &_texture);
+	glBindTexture(GL_TEXTURE_2D, _texture);
+
+	//initialize pixels to rgba
+	int x = 0;
+	int y = 0;
+	for (size_t i = 0; i < (4 * texWidth*texHeight); i += 4)
+	{
+		image[i] = (unsigned char)rgba.x;
+		image[i+1] = (unsigned char)rgba.y;
+		image[i+2] = (unsigned char)rgba.z;
+		image[i+3] = (unsigned char)rgba.w;
+		
+
+		//circle needs to be saved
+		//need to make drawFunc() that takes std::function<bool(x,y)>
+		//which can be used in place of for loop in both functions this and below
+		/*
+		if(tolerance((x-400)*(x-400) + (y-400)*(y-400), 100*100, 100))
+		{
+			image[i] = (unsigned char)50;
+			image[i + 1] = (unsigned char)50;
+			image[i + 2] = (unsigned char)150;
+			image[i + 3] = (unsigned char)150;
+		}*/
+
+		//confusing line, counting by 4's (rgba) for every pixel
+		//so its like saying x mod width, which == 0 when x == y * width
+		if ( ( (i/4)%(int)size.x ) == 0 )
+		{
+			x = 0;
+			y++;
+		}
+		else x++;
+
+	}
 
 	isLoaded = true;
+}
+
+void texture::draw(vec2 & pos, glm::vec4 & rgba)
+{
+
+	//need to throw some kind of error in else
+	if (image != nullptr)
+	{
+
+		int x = 0;
+		int y = 0;
+		for (size_t i = 0; i < (4 * texWidth*texHeight); i += 4)
+		{
+
+			//if (x >= 400 && y >= 400) another example for drawFunc()
+			if(x==pos.x && y == pos.y)
+			{
+				image[i] = (unsigned char)rgba[0];
+				image[i + 1] = (unsigned char)rgba[1];
+				image[i + 2] = (unsigned char)rgba[2];
+				image[i + 3] = (unsigned char)rgba[3];
+			}
+
+			if (((i / 4) % texWidth) == 0)
+			{
+				x = 0;
+				y++;
+			}
+			else x++;
+
+		}
+	}
+
 }
 
 void texture::loadTexture()
 {
 
-
-	glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR);
-	glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
-	glTexImage2D(GL_TEXTURE_2D, 0, GL_RGBA, texWidth, texHeight, 0, GL_RGBA, GL_UNSIGNED_BYTE, image);
+	if (isLoaded) 
+	{
+		glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR);
+		glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
+		glTexImage2D(GL_TEXTURE_2D, 0, GL_RGBA, texWidth, texHeight, 0, GL_RGBA, GL_UNSIGNED_BYTE, image);
+	}
 }
 
 void texture::drawTexture()
 {
-
+					//there is a conflict with textBox - it uses GL_TEXTURE1 --
 	glActiveTexture(GL_TEXTURE0);	//this could be a conflict if drawing multiple textures
 									//needs to be planned for -prob not,when drawing one at a time
 	glBindTexture(GL_TEXTURE_2D, _texture);
 
+	//set up cam matrix for shader
+	glUniform1f((thisDisplay.shaderList[usesShader()]->getScreenWidthID()), thisDisplay.getWidth());
+	glUniformMatrix4fv((thisDisplay.shaderList[usesShader()]->getProjectID()), 1, GL_FALSE, &(thisDisplay.cam.Projection[0][0]));
 
+	glPushMatrix();
+
+	
 	//needed to overlap sprites - otherwise transparant background draw overwrites previously drawn background
 	glEnable(GL_BLEND);
 	glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);
 	/////////////////////////////////////////////////////
 	
-	glPushMatrix();
-
-	glEnable(GL_DEPTH_TEST);
+	//this messes up alpha layers and reverses layers
+	//glEnable(GL_DEPTH_TEST);
 
 	//handles scale rotate and translate
 	transformMatrices();
@@ -340,8 +511,8 @@ void texture::drawTexture()
 	//this is the actual draw
 	glDrawElements(GL_TRIANGLES, 6, GL_UNSIGNED_SHORT, Indices);
 
-	glPopMatrix();
 
+	glPopMatrix();
 
 }
 
@@ -349,13 +520,18 @@ void texture::loadImage(const string & file)
 {
 	int width = 0, height = 0, channels = 0;
 
-	unsigned char * img;
+	//deletes if there is image loaded
+	if (image != nullptr)
+	{
+		delete[] image;
+		glDeleteTextures(1, &_texture);
+	}
 
+	//need to look into stbi allocation
 	stbi_set_flip_vertically_on_load(true);
-	img = stbi_load(file.c_str(), &width, &height, &channels, STBI_rgb_alpha);
-
 	//save to member variables
-	image = img;
+	image = stbi_load(file.c_str(), &width, &height, &channels, STBI_rgb_alpha);
+
 	texWidth = width;
 	texHeight = height;
 
@@ -372,19 +548,18 @@ void texture::transformMatrices()
 
 	//need to calculate and subtract dist from center
 	//variables need to be used to make this all more clear
-	float rx = -externalPosition.x + thisDisplay.getWidth() / 2.f;
-	float ry = -externalPosition.y + thisDisplay.getHeight() / 2.f;
+	float rx = externalPosition.x / ( thisDisplay.getWidth());
+	float ry = externalPosition.y / ( thisDisplay.getHeight());
 	//this isn't quite right, but on the right path i think
-	rx *= -.15f;
-	ry *= -.15f;
 
-	transView = glm::translate(thisDisplay.cam.View, glm::vec3((externalPosition.x - rx) / (thisDisplay.getWidth()) - .5f, (externalPosition.y - ry) / (thisDisplay.getHeight()) - .5f, -.5f));
+	transView = glm::translate(thisDisplay.cam.View, glm::vec3((rx) - .5f, (ry) - .5f, -.5f));
+	
 
-	mvp = transView*transModel;
+	mv = transView*transModel;
 
-	//set up shader model * view matrix
+	//set up shader with  model * view matrix
 	glUniform1f((thisDisplay.shaderList[usingShaderNumber]->getTexWidthID()), texWidth);
-	glUniformMatrix4fv((thisDisplay.shaderList[usingShaderNumber]->getModelID()), 1, GL_FALSE, &mvp[0][0]);
+	glUniformMatrix4fv((thisDisplay.shaderList[usingShaderNumber]->getModelID()), 1, GL_FALSE, &mv[0][0]);
 
 }
 
@@ -395,7 +570,7 @@ void texture::transformMatrices()
 display::display()
 {
 
-	title = "default";					//field of view 			aspect ratio			near  far
+	title = "";	        				//field of view 			aspect ratio			near  far
 	cam.Projection = glm::perspective(glm::radians(45.f), (float)winWidth/(float)winHeight, 0.1f, 10.f);
 								       //eye			  center 			    up
 	cam.View = glm::lookAt(glm::vec3(0, 0, .5), glm::vec3(0, 0, 0), glm::vec3(0, 1, 0));
@@ -426,20 +601,15 @@ void display::memberDraw()
 {
 
 	glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
-	
-	
 
-//	for(auto tex : textureList ) how to this way?
-	//loop draws all textures 
 	for (unsigned int i = 0; i < textureList.size(); i++)
 	{
 		
-		//set up cam matrix for shader
-		glUniform1f((shaderList[textureList[i]->usesShader()]->getScreenWidthID()), winWidth);
-		glUniformMatrix4fv((shaderList[textureList[i]->usesShader()]->getProjectID()), 1, GL_FALSE, &(cam.Projection[0][0]));
-
-		textureList[i]->loadTexture();
-		shaderList[textureList[i]->usesShader()]->useShader(textureList[i]->getVtx());
+		if (textureList[i]->isGood()) 
+		{
+			textureList[i]->loadTexture();
+			shaderList[textureList[i]->usesShader()]->useShader(textureList[i]->getVtx());
+		}
 		textureList[i]->drawTexture();
 	
 	}
@@ -475,7 +645,9 @@ void display::memberKeyboard(unsigned char k, int x, int y)
 {
 	//use int glutGetModifiers() to get shift + key, ctrl + key etc
 	//use seperate keyboard function glutSpecialFunc for directions and such
-	mousePos = vec2(x, y);
+
+	//this mousePos does not match mouse fn 
+	//	mousePos = vec2(x, y);
 
 	keyListeners[k] = true;
 
@@ -492,7 +664,7 @@ void display::memberKeyboard(unsigned char k, int x, int y)
 
 void display::memberMouse(int x, int y)
 {
-	mousePos = vec2(x, -y+winHeight);
+	mousePos = vec2( x, winHeight-y );
 }
 
 void display::openDisplay(int * ac, char ** av)
@@ -503,13 +675,20 @@ void display::openDisplay(int * ac, char ** av)
 	glutInitWindowSize(winWidth, winHeight);
 
 	glutCreateWindow(title.c_str());
-	//glutFullScreen();	//this needs its own function
+	
+	if (fullscreen)
+	{
+		glutFullScreen();	//this needs its own function that knows fullscreen size
+		//update window size
+		vec2 win(glutGet(GLUT_SCREEN_HEIGHT), glutGet(GLUT_SCREEN_WIDTH));
+		setSize(win);
+	}
 						//Init GLEW
 	GLenum error = glewInit();
 
 	if (error != GLEW_OK)	//this like all other error checking
 	{						//needs handled
-		std::cout << "Found the problem\n";
+		std::cout << "Fatal Error - Could not initiate GLEW\n";
 	}
 
 
@@ -523,6 +702,8 @@ void display::openDisplay(int * ac, char ** av)
 	//R   G    B    A
 	glClearColor(0.f, 0.f, 0.f, 0.f);	//this needs to take variables
 
+	glViewport(0, 0, winWidth, winHeight);
+
 	//create default texture shader
 	shaderList.push_back(make_unique<shader>());
 	shaderList[0]->initShader();
@@ -532,9 +713,13 @@ void display::openDisplay(int * ac, char ** av)
 
 }
 
-void display::addTexture(std::shared_ptr<texture> &tex)
+
+//need a custome deleter or something I don't know about...
+
+void display::addTexture(texture &tex)
 {
-	textureList.push_back(tex);
+	//textureList.push_back(make_unique<texture>(tex));
+	textureList.push_back(&tex);
 }
 
 void display::setUpdate(function<void()> update)
@@ -562,20 +747,34 @@ vec2 display::getMousePos()
 	return mousePos;
 }
 
+void display::setTitle(string t)
+{
+	title = t;
+}
+
 void display::setSize(vec2 win)
 {
 	
 	for (int i = 0; i < textureList.size(); i++)
 	{
+		//scale texture pos to new screen size
 		textureList[i]->translateTexture(vec2( 
-					(int)((float)win.x/(float)winWidth * textureList[i]->getExternalPosition().x ),
-					(int)((float)win.y / (float)winHeight * textureList[i]->getExternalPosition().y )
+					(int)( (float)win.x / (float)winWidth * textureList[i]->getExternalPosition().x ),
+					(int)( (float)win.y / (float)winHeight * textureList[i]->getExternalPosition().y )
+		
 		));
 	}
 
+	//change screen size members
 	winWidth = win.x;
 	winHeight = win.y;
 
+}
+
+
+void display::setFullscreen()
+{
+	fullscreen = true;
 }
 
 int display::getHeight() const
@@ -596,34 +795,63 @@ int main(int argc, char **argv)
 
 	//create texture
 	texture tex;
-	//tex.load("kim.jpg");
-	tex.load("test2.bmp");
-	tex.resize(800);
+	tex.load("kim.jpg");
+	//tex.load("test2.bmp");
+	tex.resize(400);
 	//test multiple textures
 	texture tex2;
 	tex2.load("test.jpg");
 	//tex2.load("test2.bmp");
-	tex2.resize(200);
+	tex2.resize(100);
 	
+	texture tex3;
+
+	tex3.load(vec2(800.f, 800.f), glm::vec4( 255.f, 255.f, 255.f, 255.f));
+	tex3.resize(100);
 	//test display init functions
-	thisDisplay.addTexture(std::make_shared<texture>(tex));	//this should make pointer in function
-	thisDisplay.addTexture(std::make_shared<texture>(tex2));	//need to come up with layering method
+	unsigned char  t[] = { "HEY YOU GUYS!!" };
+	textBox tex4("HEY YOU GUYS!!");
+//	tex4.resize(1);	//do not resize textBox bug
+	//tex4.load(vec2(glutStrokeLengthf(GLUT_STROKE_ROMAN, t), glutStrokeHeight(GLUT_STROKE_ROMAN)), glm::vec4(255, 0, 0, 220));
+	//tex4.setBackground(glm::vec4(255, 0, 0, 220));
+
+	texture tex5;
+	tex5.load("test.jpg");
+	tex5.resize(80);
+
+	thisDisplay.addTexture(tex2);
+	thisDisplay.addTexture(tex);		
+	thisDisplay.addTexture(tex3);
+	thisDisplay.addTexture(tex4);
+	thisDisplay.addTexture(tex5);
+	
+
+	//textBox t("test");
+	//thisDisplay.text.push_back(std::make_shared<textBox>(t));
+
+	//aspect ratio problem - textures gets warped for widescreen ex 1500,1000
 	thisDisplay.setSize(vec2(1000, 1000));
+	thisDisplay.setTitle("Test Display - GFXlib");
+	//thisDisplay.setFullscreen();
 	
 	//find out why these don't need to be added...more convenient if they don't
+	//the keylistener automatically adds hit keys, this method may be needed for 
+	//multikey presses still though, not supported yet
 //	thisDisplay.addKeyListener('w');
 //	thisDisplay.addKeyListener('s');
-
-	auto t1 = thisDisplay.textureList[0];
-	auto t2 = thisDisplay.textureList[1];
+	
+	auto & t1 = thisDisplay.textureList[1];
+	auto & t2 = thisDisplay.textureList[0];
 	
 	float rot = t1->getRotation();
+
+	glm::vec4 color(155, 255, 115, 115);
+	int inc = 1;
 
 	//test update function
 	//and other features
 	thisDisplay.setUpdate([&]() {
 	
-		t1 = thisDisplay.textureList[0];
 		
 		rot = t1->getRotation();
 
@@ -665,17 +893,196 @@ int main(int argc, char **argv)
 		{
 			t2->zoomTexture(t2->getZoom() - .1);
 		}
+
 		
+		//testing to set up texture::draw()
+
+		if (thisDisplay.checkKeyListener('0'))
+		{
+			inc *= -1;
+		}
+
+		if (thisDisplay.checkKeyListener('3'))
+		{
+			color[0] += inc;
+		}
+		if (thisDisplay.checkKeyListener('4'))
+		{
+			color[1] += inc;
+		}
+		if (thisDisplay.checkKeyListener('5'))
+		{
+			color[2] += inc;
+		}
+		if (thisDisplay.checkKeyListener('6'))
+		{
+			color[3] += inc;
+		}
+		thisDisplay.textureList[2]->draw(vec2(0, 0), color);
+
 		//test mouse movement
-		//keyboard input messes this up, not sure why yet		--TODO--
 		vec2 m = thisDisplay.getMousePos();
 	//	std::cout << m.x << " " << m.y << "\n";
 		t1->translateTexture(m);
 
-
+		if (thisDisplay.checkKeyListener('l'))
+		{
+			tex4.setText("I can say different things \n on different lines");
+		}
+		tex4.load(vec2(glutStrokeLengthf(GLUT_STROKE_ROMAN, t), glutStrokeHeight(GLUT_STROKE_ROMAN)), glm::vec4(255, 0, 0, 220));
+		tex5.translateTexture(vec2(150, 150));
 	});
 
 	
 	//run display
 	thisDisplay.openDisplay(&argc, argv);
 }
+
+
+//now that i figured it out fix, should only be one box behind text string
+void textBox::drawTexture()
+{
+		vec2 size = vec2(glutStrokeLengthf(GLUT_STROKE_ROMAN, text), glutStrokeHeight(GLUT_STROKE_ROMAN));
+		
+		if (!isLoaded)
+		{
+			load(size, bg_color);
+		
+			loadTexture();
+			thisDisplay.shaderList[usesShader()]->useShader(Vertices);
+		
+		}
+	
+		//this is to draw text background...might be better to have a separate
+		//texture draw function, because this is the exact same as the original 
+		//with the text draw appended
+		//also i need to declare override
+
+		//except for having to use a different active texture
+		//there is a lot available, do I need to use more than 2?
+
+		glActiveTexture(GL_TEXTURE1);
+		glBindTexture(GL_TEXTURE_2D, _texture);
+
+		//set up cam matrix for shader
+		glUniform1f((thisDisplay.shaderList[usesShader()]->getScreenWidthID()), thisDisplay.getWidth());
+		glUniformMatrix4fv((thisDisplay.shaderList[usesShader()]->getProjectID()), 1, GL_FALSE, &(thisDisplay.cam.Projection[0][0]));
+
+		glPushMatrix();
+
+		//needed to overlap sprites - otherwise transparant background draw overwrites previously drawn background
+		glEnable(GL_BLEND);
+		glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);
+		/////////////////////////////////////////////////////
+		//handles scale rotate and translate
+		transformMatrices();
+
+		//this is the actual draw
+		glDrawElements(GL_TRIANGLES, 6, GL_UNSIGNED_SHORT, Indices);
+
+		glPopMatrix();
+	
+		
+	//draw text last
+
+	glPushMatrix();
+
+	//this unloads default shader program
+	//so that gltransforms can be used
+	glUseProgram(NULL);
+	glMatrixMode(GL_PROJECTION);
+	glLoadIdentity();
+	glOrtho(0, thisDisplay.getWidth(), 0, thisDisplay.getHeight(), .1, 10);
+	glMatrixMode(GL_MODELVIEW);
+	glLoadIdentity();
+	glColor3f(text_color.x, text_color.y, text_color.z);
+	//scale needs member variable so it can be adjusted, /8.f and .25 coincide
+	glTranslatef(externalPosition.x-size.x*scale/2.f, externalPosition.y-size.y*scale/2.f, -.4);
+	glScalef(scale, scale, 0);
+
+	glutStrokeString(GLUT_STROKE_ROMAN, text);
+	glPopMatrix();
+
+	//reset active texture 
+	glActiveTexture(GL_TEXTURE0);
+
+}
+
+void textBox::loadTexture()
+{
+	 if (isLoaded)
+	{
+		updateVertices();
+
+		glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR);
+		glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
+		glTexImage2D(GL_TEXTURE_2D, 0, GL_RGBA, texWidth, texHeight, 0, GL_RGBA, GL_UNSIGNED_BYTE, image);
+	}
+}
+
+
+
+textBox::textBox(string t) : texture()//, text(reinterpret_cast<const unsigned char *>(t.c_str()))
+{
+	
+	//roundabout way to cast unsigned char * from string -- above method compiles but not correct string
+
+	unsigned char * temp = new unsigned char[t.length()];
+	int i = 0;
+
+	setText(t);
+
+	texWidth = 1;
+	texHeight = 1;
+
+	scaleX = .25;
+	scaleY = .25;
+
+}
+
+void textBox::setText(string t)
+{
+	unsigned char * temp = new unsigned char[t.length()];
+	int i = 0;
+
+	for (auto c : t)
+	{
+		temp[i] = c;
+		i++;
+	}
+	temp[i] = '\0';
+	text = temp;
+
+	//delete[] temp;	does this need managed?
+}
+
+void textBox::setBackground(glm::vec4 rgba)
+{
+	bg_color = rgba;
+	makeBackground();
+}
+
+void textBox::setTextColor(glm::vec4 rgba)
+{
+	text_color = rgba;
+}
+
+void textBox::setTextSize(float size)
+{
+	scale = size;
+}
+
+void textBox::setBorderSize(vec2 size)
+{
+	texWidth = size.x;
+	texHeight = size.y;
+
+	makeBackground();
+}
+
+void textBox::makeBackground()
+{
+	load(vec2(texWidth,texHeight), bg_color);
+}
+
+

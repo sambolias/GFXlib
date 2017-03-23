@@ -43,7 +43,9 @@ using glm::vec2;
 
 class shader
 {
-
+	friend class display;
+	friend class texture;
+	friend class textBox;
 
 	GLuint compileShader(GLenum shaderType, const string source);
 
@@ -56,7 +58,7 @@ class shader
 			attribute vec2 aCoord;
 			varying vec2 vCoord;
 
-			uniform mat4 MVP;
+			uniform mat4 MV;
 			uniform mat4 P;
 			uniform float SW;
 			uniform float TW;
@@ -66,7 +68,7 @@ class shader
 			
 			void main()
 			{	
-				eye = MVP * vec4(aPos.x,aPos.y, 0.5, 1);
+				eye = MV * vec4(aPos.x,aPos.y, 0.5, 1);
 				proj = P * vec4(0.5*TW, 0.5*TW, eye.z, eye.w);
 
 				gl_PointSize = SW* proj.x / proj.w;
@@ -87,7 +89,7 @@ class shader
 			}	
 		)";
 
-public://for testing
+
 	GLuint _program;
 	GLuint _samplerLocation;
 	GLuint _textureCoord;	//location or coordinates?
@@ -104,9 +106,7 @@ public://for testing
 
 	//add error checking
 
-public:
-	//needs dctor
-	shader();
+protected:
 	
 	GLuint & getProjectID();
 	GLuint & getModelID();
@@ -116,69 +116,57 @@ public:
 	
 	void useShader(const GLfloat *Vertices);
 
+public:
+	//needs dctor
+	shader();
+	~shader();
 
 };
 
 
 
+class texture	
+{	
+protected:
+	friend class display;
 
-//class shader;
+	//private members
 
-//both classes badly need refactor
-//need destructors, memory leaks aplenty!
-class texture	//this will load textures that can be drawn to display
-{				//should this hold shader program or display?
-
-				//shader program functions
-//	shader _program;
-	//default shader program
-	int usingShaderNumber = 0;
+	//default shader program 0
+	int usingShaderNumber;
 	GLuint _texture;
+	//texture size (stays constant after load)
 	int texWidth, texHeight;
-	float zoom = 1.f;
-	float scaleX=1.f, scaleY=1.f;
-	float rotation = 0.f;
+	//transformation variables
+	float zoom;
+	float scaleX, scaleY;
+	float rotation;
+  //on screen translation   //in texture traversal
 	vec2 externalPosition, internalPosition;
-	unsigned char * image;
+	//array of rgb(a) pixels
+	unsigned char * image=nullptr;
 
-	//this is just learning, probably should be in display
-	//only model view belongs in texture class
-	//but all 3 are needed to update mvp for shader
-	//glm::mat4 Perspective;
-	//glm::mat4 View;
-	glm::mat4 Model = glm::mat4(1.0f);
+	
+	//Model Matrix
+	//These probably don't need to be stored as they are
+	//recalculated every iteration
+	glm::mat4 Model;
+	glm::mat4 mv;
 
-	glm::mat4 mvp;
-//	GLint mvp_handle;
-	//heres where the magic happens
-
-	GLfloat Vertices[20] =
-	{
-		-1.f, 1.f, 0.0f,
-		0.0f, 1.f,
-		-1.f, -1.f, 0.0f,
-		0.0f, 0.0f,
-		1.f, -1.f, 0.0f,
-		1.f, 0.0f,
-		1.f, 1.f, 0.0f,
-		1.f, 1.f
-	};
-
-	GLushort Indices[6] = { 0, 1, 2 ,0, 2, 3 };
-	bool isLoaded = false;
+//texture input/output vtx 
+	GLfloat Vertices[20];
+	GLushort Indices[6];
+	bool isLoaded;
 
 
 public:
 
 	bool isGood();
 
-	//need to use variables to ctor
 	texture(); 
-//	texture(display *canvas);
-	texture(const texture & cpy);
+	
+	virtual ~texture();
 
-
-	void updateVertices();
 	
 	//scalar resize, should also have scalarx and scalary transforms, but with better names
 	void resize(int width);
@@ -192,25 +180,56 @@ public:
 	vec2 getExternalPosition();
 	vec2 getInternalPosition();
 
-	GLfloat * getVtx();
-
-	int usesShader();
-
-	//and layer info
-	//then maybe animated sprites
-
 	void load(const string &file);
+	void load(vec2 &size, glm::vec4 &rgba);
 
+	void draw(vec2 &pos, glm::vec4 &rgba);
+
+protected:
+	GLfloat * getVtx();
+	int usesShader();	//this can be public if multiple shaders are supported
 	//kindof confusing names, this loads it to draw, the other loads it from file
-	void loadTexture();
-	void drawTexture();
+	virtual void loadTexture();
+	virtual void drawTexture();
 
-private:
 
+	void updateVertices();
 	//loads file using stbi_image free lib...needs error checking
 	void loadImage(const string &file);
 	
 	void transformMatrices();
+
+};
+
+
+class textBox: public texture
+{
+
+	
+
+public:
+	textBox(string t);
+
+	void setText(string text);
+	void setBackground(glm::vec4 rgba);
+	void setTextColor(glm::vec4 rgba);
+	void setTextSize(float size);
+	void setBorderSize(vec2 size);
+
+private:
+	void makeBackground();
+
+	const unsigned char * text;
+
+	glm::vec4 bg_color = glm::vec4(0, 0, 0, 175);
+	glm::vec3 text_color = glm::vec3(1, 1, 1);
+
+	float scale=.25f;
+	textBox(const textBox & cpy);	//this should probably be a deleted function
+protected:
+	virtual void drawTexture() override;
+	virtual void loadTexture() override;
+
 
 };
 
@@ -242,13 +261,13 @@ class display	//this will create display and start glut loop
 {				//must figure out how to pass functions to display
 
 
-
 public:
 	//need dctor stuff and error handling
-//	display() {}
 	display();
 
-	
+	~display() = default;	//make sure there are no more resources that need deleted
+
+	bool fullscreen = false;
 	int winHeight = 512, winWidth = 512;	//need to find out how to init these for diff machines
 	int refresh;	//need to make sure this does what i think it does
 	string title;
@@ -256,9 +275,11 @@ public:
 	vec2 mousePos;
 	camera cam;
 
+
 	vector<unique_ptr<shader>> shaderList;
 	//consider using a map with named textures
-	vector<std::shared_ptr<texture>> textureList;
+	//find out if this could use a unique pointer
+	vector<texture*> textureList;
 
 	//to be called every iteration of glutLoop
 	function<void()> userUpdate;
@@ -281,20 +302,23 @@ public:
 	void openDisplay(int *ac, char ** av);	//need to find out what these command line params are used for
 
 	//member accessor functions
-	void addTexture(std::shared_ptr<texture> &tex);
+	void addTexture(texture &tex);
 	void setUpdate(function<void()> update);
 	void addKeyListener(unsigned char key);
 	void removeKeyListener(unsigned char key);
 	bool checkKeyListener(unsigned char key);
 	vec2 getMousePos();
 
-	void setSize(vec2 win);
-
 	int getHeight() const;
 	int getWidth() const;
 
+	//display init (pre-open) functions
+	void setTitle(string t);
+	void setSize(vec2 win);
+	void setFullscreen();
 
-}thisDisplay;
+
+}thisDisplay;	//this is the only display that should ever exist
 
 
 
